@@ -5,7 +5,7 @@ services:
         container_name: service-postgres
         image: postgres:12
         environment:
-          - POSTGRES_DB=pg_service_template_db-1
+          - POSTGRES_DB=code_architecture_db-1
           - POSTGRES_USER=user
           - POSTGRES_PASSWORD=password
         ports:
@@ -13,19 +13,20 @@ services:
         volumes:
           - ./postgresql/schemas:/docker-entrypoint-initdb.d
           - ./.pgdata:/var/lib/postgresql/data
+
         networks:
           - postgres
 
-    pg_service_template-service:
+    code_architecture-service:
         image: ghcr.io/userver-framework/docker-userver-build-base:v1a
         privileged: true
         environment:
-          - POSTGRES_DB=pg_service_template_db-1
+          - POSTGRES_DB=code_architecture_db-1
           - POSTGRES_USER=user
           - POSTGRES_PASSWORD=password
           - PREFIX=${PREFIX:-~/.local}
           - CC
-          - CCACHE_DIR=/pg_service_template/.ccache
+          - CCACHE_DIR=/code_architecture/.ccache
           - CCACHE_HASHDIR
           - CCACHE_NOHASHDIR
           - CCACHE_PREFIX
@@ -35,12 +36,12 @@ services:
           - CXX
           - MAKE_OPTS
         volumes:
-          - .:/pg_service_template:rw
+          - .:/code_architecture:rw
           - ./third_party/userver/tools/docker:/tools:ro
           - ${TC_CORES_DIR:-./.cores}:/cores:rw
         ports:
           - 8080:8080
-        working_dir: /pg_service_template
+        working_dir: /code_architecture
         entrypoint:
           - /tools/run_as_user.sh
         depends_on:

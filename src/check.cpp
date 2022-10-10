@@ -1,4 +1,4 @@
-#include "hello.hpp"
+#include "check.hpp"
 
 #include <fmt/format.h>
 
@@ -8,15 +8,15 @@
 #include <userver/storages/postgres/component.hpp>
 #include <userver/utils/assert.hpp>
 
-namespace pg_service_template {
+namespace code_architecture {
 
 namespace {
 
-class Hello final : public userver::server::handlers::HttpHandlerBase {
+class Check final : public userver::server::handlers::HttpHandlerBase {
  public:
-  static constexpr std::string_view kName = "handler-hello";
+  static constexpr std::string_view kName = "handler-check";
 
-  Hello(const userver::components::ComponentConfig& config,
+  Check(const userver::components::ComponentConfig& config,
         const userver::components::ComponentContext& component_context)
       : HttpHandlerBase(config, component_context),
         pg_cluster_(
@@ -27,24 +27,24 @@ class Hello final : public userver::server::handlers::HttpHandlerBase {
   std::string HandleRequestThrow(
       const userver::server::http::HttpRequest& request,
       userver::server::request::RequestContext&) const override {
-    const auto& name = request.GetArg("name");
+    const auto& user_id = request.GetArg("user_id");
+    std::string name = "unknown";
 
     auto user_type = UserType::kFirstTime;
-    if (!name.empty()) {
+    if (!user_id.empty()) {
       auto result = pg_cluster_->Execute(
           userver::storages::postgres::ClusterHostType::kMaster,
-          "INSERT INTO hello_schema.users(name, count) VALUES($1, 1) "
-          "ON CONFLICT (name) "
-          "DO UPDATE SET count = users.count + 1 "
-          "RETURNING users.count",
-          name);
+          "SELECT full_name FROM code_architecture.user_account"
+          " WHERE id = $1",
+          std::stoi(user_id));
 
-      if (result.AsSingleRow<int>() > 1) {
+      if (!result.IsEmpty()) {
         user_type = UserType::kKnown;
+        name = result.AsSingleRow<std::string>();
       }
     }
 
-    return pg_service_template::SayHelloTo(name, user_type);
+    return code_architecture::SayHelloTo(name, user_type);
   }
 
   userver::storages::postgres::ClusterPtr pg_cluster_;
@@ -61,16 +61,16 @@ std::string SayHelloTo(std::string_view name, UserType type) {
     case UserType::kFirstTime:
       return fmt::format("Hello, {}!\n", name);
     case UserType::kKnown:
-      return fmt::format("Hi again, {}!\n", name);
+      return fmt::format("Hello, {}!\n", name);
   }
 
   UASSERT(false);
 }
 
-void AppendHello(userver::components::ComponentList& component_list) {
-  component_list.Append<Hello>();
+void AppendCheck(userver::components::ComponentList& component_list) {
+  component_list.Append<Check>();
   component_list.Append<userver::components::Postgres>("postgres-db-1");
   component_list.Append<userver::clients::dns::Component>();
 }
 
-}  // namespace pg_service_template
+}  // namespace code_architecture
