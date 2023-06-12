@@ -18,7 +18,7 @@ services:
           - postgres
 
     code_architecture-service:
-        image: ghcr.io/userver-framework/docker-userver-build-base:v1a
+        image: ghcr.io/userver-framework/ubuntu-userver-build-base:v1
         privileged: true
         environment:
           - POSTGRES_DB=code_architecture_db-1
