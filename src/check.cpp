@@ -8,13 +8,20 @@
 #include <userver/storages/postgres/component.hpp>
 #include <userver/utils/assert.hpp>
 
+#include "accounts/AccountCreatorsManager.h"
+
+#include "items/ItemCreatorsManager.h"
+
+#include "validator/Validator.h"
+
 namespace code_architecture {
 
 namespace {
 
 class Check final : public userver::server::handlers::HttpHandlerBase {
  public:
-  static constexpr std::string_view kName = "handler-check";
+  static constexpr std::string_view kName = "handler-couriers";
+  userver::storages::postgres::ClusterPtr pg_cluster_;
 
   Check(const userver::components::ComponentConfig& config,
         const userver::components::ComponentContext& component_context)
@@ -22,50 +29,47 @@ class Check final : public userver::server::handlers::HttpHandlerBase {
         pg_cluster_(
             component_context
                 .FindComponent<userver::components::Postgres>("postgres-db-1")
-                .GetCluster()) {}
+                .GetCluster()){};
 
   std::string HandleRequestThrow(
       const userver::server::http::HttpRequest& request,
       userver::server::request::RequestContext&) const override {
     const auto& user_id = request.GetArg("user_id");
-    std::string name = "unknown";
+    const auto& item_ids = request.GetArgVector("user_id");
 
-    auto user_type = UserType::kFirstTime;
-    if (!user_id.empty()) {
-      auto result = pg_cluster_->Execute(
-          userver::storages::postgres::ClusterHostType::kMaster,
-          "SELECT full_name FROM code_architecture.user_account"
-          " WHERE id = $1",
-          std::stoi(user_id));
+    std::vector<std::pair<std::string, std::string>> items_names;
 
-      if (!result.IsEmpty()) {
-        user_type = UserType::kKnown;
-        name = result.AsSingleRow<std::string>();
-      }
+    for (auto item_id : item_ids) {
+      std::string category =
+          std::string(item_id.begin(), item_id.begin() + item_id.find('_'));
+      std::string id =
+          std::string(item_id.begin() + item_id.find('_') + 1, item_id.end());
+
+      items_names.push_back(std::make_pair(category, id));
     }
 
-    return code_architecture::SayHelloTo(name, user_type);
-  }
+    AccountCreatorsManager accountCreatorsManager;
+    auto accountCreator = accountCreatorsManager.GetAccountCreator(
+        std::stoi(user_id), pg_cluster_);
+    auto account =
+        accountCreator->CreateAccount(std::stoi(user_id), pg_cluster_);
 
-  userver::storages::postgres::ClusterPtr pg_cluster_;
+    std::vector<std::shared_ptr<const Item>> items;
+    ItemCreatorsManager itemCreatorsManager;
+    for (auto item_name : items_names) {
+      auto itemCreator = itemCreatorsManager.GetItemCreator(item_name.first);
+      auto item = itemCreator->CreateItem(std::stoi(item_name.second), pg_cluster_);
+      items.push_back(item);
+    }
+
+    auto codes_array = Validator::Validate(account, items, pg_cluster_);
+
+    // формирование ответа на основе codes_array и исключений
+
+  }
 };
 
 }  // namespace
-
-std::string SayHelloTo(std::string_view name, UserType type) {
-  if (name.empty()) {
-    name = "unknown user";
-  }
-
-  switch (type) {
-    case UserType::kFirstTime:
-      return fmt::format("Hello, {}!\n", name);
-    case UserType::kKnown:
-      return fmt::format("Hello, {}!\n", name);
-  }
-
-  UASSERT(false);
-}
 
 void AppendCheck(userver::components::ComponentList& component_list) {
   component_list.Append<Check>();
